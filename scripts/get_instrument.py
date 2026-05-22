@@ -1,26 +1,15 @@
 import argparse
-import os
 import subprocess
 import sys
 
-from config import get_api_secret, get_account_id
+from config import get_api_secret, get_account_id, create_client
 
 try:
-    from public_api_sdk import (
-        PublicApiClient,
-        PublicApiClientConfiguration,
-        InstrumentType,
-    )
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
+    from public_api_sdk import InstrumentType
 except ImportError:
     print("Installing required dependency: publicdotcom-py...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.8"])
-    from public_api_sdk import (
-        PublicApiClient,
-        PublicApiClientConfiguration,
-        InstrumentType,
-    )
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.15"])
+    from public_api_sdk import InstrumentType
 
 
 def get_instrument(symbol, instrument_type="EQUITY"):
@@ -50,10 +39,7 @@ def get_instrument(symbol, instrument_type="EQUITY"):
         sys.exit(1)
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration(default_account_number=account_id)
-        )
+        client = create_client(secret, account_id)
 
         inst_type = instrument_type_map.get(instrument_type.upper())
         if not inst_type:

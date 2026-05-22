@@ -49,9 +49,9 @@ from public_api_sdk.auth_config import ApiKeyAuthConfig
 
 def init_client() -> PublicApiClient:
     return PublicApiClient(
-        ApiKeyAuthConfig(api_secret_key=os.environ["PUBLIC_API_SECRET_KEY"]),
+        ApiKeyAuthConfig(api_secret_key=os.environ["PUBLIC_COM_SECRET"]),
         config=PublicApiClientConfiguration(
-            default_account_number=os.environ["PUBLIC_DEFAULT_ACCOUNT_NUMBER"],
+            default_account_number=os.environ["PUBLIC_COM_ACCOUNT_ID"],
         ),
     )
 
@@ -187,7 +187,62 @@ def leg(option_osi: str, side: OrderSide, ratio_qty: int = 1, open_close: OpenCl
     )
 ```
 
-### E) Rebate visibility (standard print pattern)
+### E) Convenience helpers (SDK 0.1.11+)
+
+The SDK ships OSI-direct helpers that collapse the verbose multi-leg pattern above for the four vertical spread types, plus quantity-based short-sale helpers and an OHLCV bars endpoint. Prefer these over hand-building `MultilegOrderRequest` / `OrderLegRequest` for the cases they cover.
+
+**Vertical spreads** — accept OSI symbols directly and handle credit-sign negation internally:
+
+```py
+# Bear Call Spread (credit). limit_price is the minimum credit to accept, as a positive Decimal.
+client.place_call_credit_spread(
+    sell_contract_osi="AAPL251219C00190000",
+    buy_contract_osi="AAPL251219C00200000",
+    quantity=1,
+    limit_price=Decimal("2.50"),
+)
+
+# Bull Call Spread (debit). limit_price is the max debit to pay.
+client.place_call_debit_spread(
+    sell_contract_osi="AAPL251219C00200000",
+    buy_contract_osi="AAPL251219C00190000",
+    quantity=1,
+    limit_price=Decimal("3.00"),
+)
+
+# Equivalents exist for PUT credit/debit: place_put_credit_spread, place_put_debit_spread.
+# Each has a matching preflight_<spread>_spread() that returns PreflightMultiLegResponse.
+```
+
+These map to the skill scripts `scripts/preflight_spread.py` and `scripts/place_spread.py` (`--spread-type {CALL_CREDIT,CALL_DEBIT,PUT_CREDIT,PUT_DEBIT}`). Use them for the four vertical-spread strategies in this library; non-vertical multi-leg strategies (iron condors, butterflies, straddles, etc.) still need section D's `place_multi_leg_limit`.
+
+**Short sales** — quantity-based equity short helpers (SELL + openCloseIndicator=OPEN):
+
+```py
+client.preflight_short_order(symbol="TSLA", quantity=Decimal("10"))
+client.place_short_order(symbol="TSLA", quantity=Decimal("10"))
+```
+
+Skill scripts: `scripts/preflight_short.py` and `scripts/place_short.py`.
+
+**Historical bars** — OHLCV across pre-market, regular, and after-hours sessions:
+
+```py
+from public_api_sdk import BarPeriod, BarAggregation, InstrumentType
+
+bars = client.get_bars(
+    symbol="AAPL",
+    period=BarPeriod.YEAR,
+    aggregation=BarAggregation.ONE_DAY,            # optional; server picks one if omitted
+    instrument_type=InstrumentType.EQUITY,         # CRYPTO / OPTION / INDEX also supported
+)
+# bars.pre_market.bars, bars.regular_market.bars, bars.after_market.bars
+# bars.previous_close_price, bars.total_gain_loss, bars.last_regular_trading_session_close
+```
+
+Skill script: `scripts/get_bars.py`.
+
+### F) Rebate visibility (standard print pattern)
 
 ```py
 def print_preflight_summary(pf):

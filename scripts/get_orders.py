@@ -1,18 +1,7 @@
 import argparse
-import os
-import subprocess
 import sys
 
-from config import get_api_secret, get_account_id
-
-try:
-    from public_api_sdk import PublicApiClient, PublicApiClientConfiguration
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
-except ImportError:
-    print("Installing required dependency: publicdotcom-py...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.8"])
-    from public_api_sdk import PublicApiClient, PublicApiClientConfiguration
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
+from config import get_api_secret, get_account_id, create_client
 
 
 def get_orders(account_id=None):
@@ -28,12 +17,7 @@ def get_orders(account_id=None):
         sys.exit(1)
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration(
-                default_account_number=account_id
-            )
-        )
+        client = create_client(secret, account_id)
 
         portfolio = client.get_portfolio()
 

@@ -20,7 +20,7 @@ metadata:
 This skill allows users to interact with their Public.com brokerage account.
 
 ## Prerequisites
-- **Python 3.8+** and **pip** — Required in your OpenClaw environment.
+- **Python 3.9+** and **pip** — Required to run this skill.
 - **Public.com account** — Create one at https://public.com/signup
 - **Public.com API key** — Get one at https://public.com/settings/v2/api
 
@@ -31,29 +31,45 @@ pip install publicdotcom-py
 
 ## Configuration
 
-This skill uses two environment variables: `PUBLIC_COM_SECRET` (required) and `PUBLIC_COM_ACCOUNT_ID` (optional). Each is resolved in the following order:
+This skill uses two environment variables: `PUBLIC_COM_SECRET` (required) and `PUBLIC_COM_ACCOUNT_ID` (optional). Each is resolved from the environment:
 
-1. **Secure file** — `~/.openclaw/workspace/.secrets/public_com_secret.txt` (or `public_com_account.txt`)
-2. **Environment variable** — `PUBLIC_COM_SECRET` / `PUBLIC_COM_ACCOUNT_ID`
-
-Setting a value via `openclaw config set` writes to the secure file location automatically.
+- **Environment variable** — `PUBLIC_COM_SECRET` / `PUBLIC_COM_ACCOUNT_ID`
 
 ### API Secret (Required)
 If `PUBLIC_COM_SECRET` is not set:
 - Tell the user: "I need your Public.com API Secret. You can find this in your Public.com developer settings at https://public.com/settings/v2/api."
-- Once provided, save it: `openclaw config set skills.publicdotcom.PUBLIC_COM_SECRET [VALUE]`
+- Once provided, instruct them to set it as an environment variable: `export PUBLIC_COM_SECRET=[VALUE]`
 
 ### Default Account ID (Optional)
 If the user wants to set a default account for all requests:
-- Save it: `openclaw config set skills.publicdotcom.PUBLIC_COM_ACCOUNT_ID [VALUE]`
+- Instruct them to set: `export PUBLIC_COM_ACCOUNT_ID=[VALUE]`
 - This eliminates the need to specify `--account-id` on each command.
 
+## Error Recovery
+
+If any command exits with an error, follow these steps before giving up:
+
+- **`PUBLIC_COM_SECRET` not set** — Ask the user for their API secret and instruct them to run `export PUBLIC_COM_SECRET=[VALUE]`, then retry.
+- **`No account ID provided`** — Run `python3 scripts/get_accounts.py` to retrieve the account ID, then retry the original command with `--account-id [ID]`.
+- **Authentication / 401 error** — Tell the user their API key may be expired or invalid, and direct them to https://public.com/settings/v2/api to generate a new one.
+- **Network / connection error** — Ask the user to check their internet connection and retry.
+- **Any other unexpected error** — Show the error message to the user and ask them how they'd like to proceed.
+
+Never silently retry the same failing command more than once.
+
 ## Available Commands
+
+### Check Setup
+Run this automatically the **first time** the user interacts with this skill, or whenever they ask "is everything configured?", "check my setup", or "verify my API key":
+1. Execute `python3 scripts/check_setup.py`
+2. If it exits successfully, proceed normally.
+3. If it fails, follow the printed instructions to resolve the issue before continuing.
 
 ### Get Accounts
 When the user asks to "get my accounts", "list accounts", or "show my Public.com accounts":
 1. Execute `python3 scripts/get_accounts.py`
 2. Report the account IDs and types back to the user.
+3. Remember the account IDs returned — use them automatically for any subsequent commands in the same session that require `--account-id`.
 
 ### Get Portfolio
 When the user asks to "get my portfolio", "show my holdings", or "what's in my account":
@@ -329,7 +345,7 @@ python3 scripts/get_option_chain.py AAPL --expiration 2026-03-20
 
 ### Set Default Account
 When the user asks to "set my default account" or "use account X as default":
-1. Save it: `openclaw config set skills.publicdotcom.PUBLIC_COM_ACCOUNT_ID [ACCOUNT_ID]`
+1. Instruct the user to set: `export PUBLIC_COM_ACCOUNT_ID=[ACCOUNT_ID]`
 2. Confirm to the user that future requests will use this account by default.
 
 ### Preflight Calculation
@@ -347,7 +363,7 @@ When the user asks to "estimate order cost", "preflight an order", "what would i
 - `--stop-price`: Required for STOP and STOP_LIMIT orders
 - `--session`: CORE (default) or EXTENDED for equity orders
 - `--open-close`: OPEN or CLOSE for options orders (OPEN to open a new position, CLOSE to close existing)
-- `--time-in-force`: DAY (default) or GTC (Good Till Cancelled)
+- `--time-in-force`: DAY (default) or GTD (Good Till Date — requires `--expiration-time YYYY-MM-DD`, max 90 days out)
 
 **Examples:**
 
@@ -397,7 +413,7 @@ When the user asks to "buy", "sell", "place an order", or "trade":
 - `--stop-price`: Required for STOP and STOP_LIMIT orders
 - `--session`: CORE (default) or EXTENDED for equity orders
 - `--open-close`: OPEN or CLOSE for options orders
-- `--time-in-force`: DAY (default) or GTC (Good Till Cancelled)
+- `--time-in-force`: DAY (default) or GTD (Good Till Date — requires `--expiration-time YYYY-MM-DD`, max 90 days out)
 
 **Examples:**
 
@@ -416,9 +432,9 @@ Buy crypto with extended hours:
 python3 scripts/place_order.py --symbol BTC --type CRYPTO --side BUY --order-type MARKET --amount 100
 ```
 
-Buy with Good Till Cancelled (GTC) order:
+Buy with a Good-Till-Date (GTD) order (cancels automatically on the given date if not filled):
 ```bash
-python3 scripts/place_order.py --symbol AAPL --type EQUITY --side BUY --order-type LIMIT --quantity 10 --limit-price 220.00 --time-in-force GTC
+python3 scripts/place_order.py --symbol AAPL --type EQUITY --side BUY --order-type LIMIT --quantity 10 --limit-price 220.00 --time-in-force GTD --expiration-time 2026-07-01
 ```
 
 **Workflow:**
@@ -426,7 +442,7 @@ python3 scripts/place_order.py --symbol AAPL --type EQUITY --side BUY --order-ty
 2. Confirm the order details with the user before executing.
 3. Execute: `python3 scripts/place_order.py [OPTIONS]`
 4. Report the order ID and confirmation back to the user.
-5. Remind user that order placement is asynchronous - they can check status later.
+5. Remind user that order placement is asynchronous. To check status later, use `get_order.py --order-id <id>`. To block until the order fills (or reaches another terminal status), use `wait_for_fill.py --order-id <id>`.
 
 ### Cancel Order
 When the user asks to "cancel order", "cancel my order", or wants to cancel a specific order:
@@ -448,7 +464,140 @@ python3 scripts/cancel_order.py --order-id 345d3e58-5ba3-401a-ac89-1b756332cc94 
 1. If the user doesn't provide an order ID, first run `get_orders.py` to show them their active orders.
 2. Confirm with the user which order they want to cancel.
 3. Execute: `python3 scripts/cancel_order.py --order-id [ORDER_ID]`
-4. Inform the user that cancellation is asynchronous - they should check order status to confirm.
+4. Inform the user that cancellation is asynchronous - confirm by running `get_order.py --order-id <id>`.
+
+### Get Historical Bars
+When the user asks for "historical prices", "price history", "candles", "OHLC", "bars", or "what did AAPL do last week/month/year":
+
+**Required parameters:**
+- `--symbol`: Ticker symbol (e.g., AAPL, BTC, or an OSI option symbol)
+- `--period`: One of DAY, WEEK, MONTH, QUARTER, HALF_YEAR, YEAR, FIVE_YEARS, YTD, SINCE_PURCHASE
+
+**Optional parameters:**
+- `--type`: EQUITY (default), CRYPTO, OPTION, or INDEX
+- `--aggregation`: Bar size override (ONE_MINUTE, FIVE_MINUTES, TEN_MINUTES, FIFTEEN_MINUTES, THIRTY_MINUTES, ONE_HOUR, ONE_DAY, ONE_WEEK, ONE_MONTH, THREE_MONTHS, SIX_MONTHS, ONE_YEAR). If omitted, the server picks a sensible default for the period.
+- `--purchase-date`: Required when `--period SINCE_PURCHASE`. Format YYYY-MM-DD.
+
+**Examples:**
+
+One year of daily bars for AAPL:
+```bash
+python3 scripts/get_bars.py --symbol AAPL --period YEAR
+```
+
+One month of one-day bars:
+```bash
+python3 scripts/get_bars.py --symbol AAPL --period MONTH --aggregation ONE_DAY
+```
+
+One week of BTC bars:
+```bash
+python3 scripts/get_bars.py --symbol BTC --type CRYPTO --period WEEK
+```
+
+Bars since purchase:
+```bash
+python3 scripts/get_bars.py --symbol AAPL --period SINCE_PURCHASE --purchase-date 2024-01-15
+```
+
+**Workflow:**
+1. Parse the user's request for symbol, time window, and optional bar size.
+2. Execute: `python3 scripts/get_bars.py [OPTIONS]`
+3. Report the pre-market, regular-market, and after-hours bars along with the previous close and total gain/loss summary.
+
+### Preflight Spread
+When the user wants to estimate the cost of a vertical option spread before placing it:
+
+**Required parameters:**
+- `--spread-type`: One of CALL_CREDIT, CALL_DEBIT, PUT_CREDIT, PUT_DEBIT
+- `--sell`: OSI symbol of the leg to sell
+- `--buy`: OSI symbol of the leg to buy
+- `--quantity`: Number of spread contracts
+- `--limit-price`: Net debit (for DEBIT spreads) or net credit (for CREDIT spreads) as a positive value. The SDK negates credits internally.
+
+**Optional parameters:**
+- `--time-in-force`: DAY (default) or GTD
+
+**Spread types:**
+- `CALL_CREDIT` — Bear Call Spread: sell lower-strike CALL, buy higher-strike CALL (net credit)
+- `CALL_DEBIT` — Bull Call Spread: buy lower-strike CALL, sell higher-strike CALL (net debit)
+- `PUT_CREDIT` — Bull Put Spread: sell higher-strike PUT, buy lower-strike PUT (net credit)
+- `PUT_DEBIT` — Bear Put Spread: buy higher-strike PUT, sell lower-strike PUT (net debit)
+
+**Example:**
+
+```bash
+python3 scripts/preflight_spread.py --spread-type CALL_DEBIT \
+  --sell AAPL251219C00200000 --buy AAPL251219C00190000 \
+  --quantity 1 --limit-price 3.00
+```
+
+**Workflow:**
+1. Help the user pick legs (use `get_option_chain.py` and `get_option_expirations.py` if needed).
+2. Execute: `python3 scripts/preflight_spread.py [OPTIONS]`
+3. Report estimated cost, credit/debit, fees, and buying-power impact.
+4. If the user wants to proceed, use `place_spread.py` with the same parameters.
+
+### Place Spread
+When the user wants to place a vertical option spread:
+
+Same arguments as Preflight Spread above. Uses the OSI-direct helpers added in publicdotcom-py 0.1.11 (`place_call_credit_spread`, etc.).
+
+**Example:**
+
+```bash
+python3 scripts/place_spread.py --spread-type PUT_CREDIT \
+  --sell AAPL251219P00180000 --buy AAPL251219P00170000 \
+  --quantity 1 --limit-price 2.50
+```
+
+**Workflow:**
+1. Confirm all spread details with the user before executing — multi-leg orders are not easily reversible.
+2. Recommend running `preflight_spread.py` first.
+3. Execute: `python3 scripts/place_spread.py [OPTIONS]`
+4. Report the order ID and remind the user to check order status.
+
+### Preflight Short
+When the user asks to "preflight a short", "estimate a short sale", or wants to see the impact before shorting:
+
+**Required parameters:**
+- `--symbol`: Equity symbol to short
+- `--quantity`: Number of shares
+
+**Optional parameters:**
+- `--order-type`: MARKET (default), LIMIT, STOP, or STOP_LIMIT
+- `--limit-price`: Required for LIMIT/STOP_LIMIT
+- `--stop-price`: Required for STOP/STOP_LIMIT
+- `--time-in-force`: DAY (default) or GTD
+- `--session`: CORE or EXTENDED
+
+**Example:**
+
+```bash
+python3 scripts/preflight_short.py --symbol TSLA --quantity 10 --order-type LIMIT --limit-price 245.00
+```
+
+**Workflow:**
+1. Execute: `python3 scripts/preflight_short.py [OPTIONS]`
+2. Report estimated proceeds, fees, and buying-power impact.
+3. If the user wants to proceed, use `place_short.py` with the same parameters.
+
+### Place Short
+When the user asks to "short a stock", "open a short position", or "place a short order":
+
+Same arguments as Preflight Short above. Uses the `place_short_order` helper added in publicdotcom-py 0.1.11. The API represents short intent as SELL + openCloseIndicator=OPEN; this helper handles that automatically.
+
+**Example:**
+
+```bash
+python3 scripts/place_short.py --symbol TSLA --quantity 10
+```
+
+**Workflow:**
+1. Confirm short-sale details with the user — shorting carries unlimited theoretical risk.
+2. Recommend running `preflight_short.py` first.
+3. Execute: `python3 scripts/place_short.py [OPTIONS]`
+4. Report the order ID and remind the user to check order status.
 
 ### Options Strategy Guidance
 When the user asks about options strategies, how to automate a strategy, which strategy to use for a given scenario, or wants help constructing multi-leg options trades:
@@ -467,4 +616,187 @@ When the user asks about options strategies, how to automate a strategy, which s
 3. Each strategy includes: description, use case with event examples, where the strategy breaks, API workflow steps, and code examples using the Public.com SDK.
 4. Use the shared SDK helpers (Setup, Market Data, Preflight, Multi-leg order helpers) from the library when constructing code examples.
 5. When recommending a strategy, always include the "Where This Strategy Breaks" context so the user understands the risks.
-6. For executable trades, map the library's code patterns to the actual scripts available in this skill (e.g., `get_option_chain.py`, `get_option_expirations.py`, `preflight.py`, `place_order.py`).
+6. For executable trades, map the library's code patterns to the actual scripts available in this skill:
+   - Single-leg orders → `preflight.py` / `place_order.py`
+   - Vertical spreads (bull/bear call/put) → `preflight_spread.py` / `place_spread.py`
+   - Any other 2-6 leg combination (iron condor, butterfly, straddle, strangle, calendar, diagonal, ratio, jade lizard, etc.) → `preflight_multileg.py` / `place_multileg.py`
+
+### Get Order Status
+When the user asks to "check order status", "is my order filled", "what happened to order X", or wants the current state of a specific order:
+
+**Required parameters:**
+- `--order-id`: The order ID to look up
+
+**Example:**
+```bash
+python3 scripts/get_order.py --order-id 345d3e58-5ba3-401a-ac89-1b756332cc94
+```
+
+**Workflow:**
+1. Execute: `python3 scripts/get_order.py --order-id [ID]`
+2. Report the order's status, filled quantity, average price, and reject reason (if any).
+3. Multi-leg orders also include a per-leg breakdown.
+
+### Wait For Fill
+When the user wants to "wait until my order fills", "block until filled", or wants the agent to monitor an order through to a terminal state before doing the next step:
+
+**Required parameters:**
+- `--order-id`: UUID of the order to track
+
+**Optional parameters:**
+- `--timeout`: Max seconds to wait (default 120)
+- `--poll-seconds`: Polling interval (default 1.0)
+- `--fill-only`: Only return success (exit code 0) on FILLED. Otherwise any terminal status (CANCELLED/REJECTED/EXPIRED/REPLACED) ends the wait.
+
+**Exit codes:** 0 = filled, 1 = other terminal status, 2 = timed out.
+
+**Example:**
+```bash
+python3 scripts/wait_for_fill.py --order-id 345d3e58-5ba3-401a-ac89-1b756332cc94 --timeout 300
+```
+
+**Workflow:**
+1. After `place_order.py` / `place_spread.py` / `place_multileg.py` returns an order ID, run `wait_for_fill.py --order-id <id>` to block until terminal status.
+2. Report the final status, fill quantity, and average price.
+
+### Cancel and Replace Order
+When the user wants to "modify my order", "change the limit price", "update the quantity on order X", or asks to swap an open order for one with new parameters:
+
+**Required parameters:**
+- `--order-id`: UUID of the existing order to replace
+- `--order-type`: New order type (LIMIT, MARKET, STOP, STOP_LIMIT)
+
+**Optional parameters:**
+- `--quantity`: New quantity (omit to keep original)
+- `--limit-price`: Required for LIMIT/STOP_LIMIT
+- `--stop-price`: Required for STOP/STOP_LIMIT
+- `--time-in-force`: DAY (default) or GTD (requires `--expiration-time`)
+- `--expiration-time`: Required when GTD
+
+**Example:**
+```bash
+python3 scripts/cancel_and_replace.py --order-id 345d3e58-5ba3-401a-ac89-1b756332cc94 \
+  --order-type LIMIT --quantity 10 --limit-price 230.00
+```
+
+**Workflow:**
+1. If the user doesn't know the order ID, run `get_orders.py` first.
+2. Confirm the new parameters with the user.
+3. Execute `cancel_and_replace.py`. The replacement gets a new order ID — report both.
+
+### Preflight Multi-Leg
+When the user wants to price a multi-leg options strategy other than a plain vertical spread (iron condor, butterfly, straddle, strangle, calendar, diagonal, ratio spread, jade lizard, etc.):
+
+**Required parameters:**
+- `--leg`: Repeat 2-6 times. Format `SYMBOL:TYPE:SIDE[:OPEN_CLOSE][:RATIO]`
+  - `TYPE` = EQUITY | OPTION
+  - `SIDE` = BUY | SELL
+  - `OPEN_CLOSE` = OPEN | CLOSE (required for OPTION legs)
+  - `RATIO` = optional integer ratio
+- `--quantity`: Number of strategy units
+- `--limit-price`: Net limit (positive = debit, negative = credit)
+
+**Optional parameters:**
+- `--time-in-force`: DAY (default) or GTD (requires `--expiration-time`)
+- `--expiration-time`: Required when GTD
+
+**Examples:**
+
+Iron Condor on AAPL (sell put spread + sell call spread, $1.50 net credit):
+```bash
+python3 scripts/preflight_multileg.py --quantity 1 --limit-price -1.50 \
+  --leg AAPL251219P00190000:OPTION:SELL:OPEN \
+  --leg AAPL251219P00185000:OPTION:BUY:OPEN \
+  --leg AAPL251219C00210000:OPTION:SELL:OPEN \
+  --leg AAPL251219C00215000:OPTION:BUY:OPEN
+```
+
+Long Straddle on AAPL ($5.00 debit):
+```bash
+python3 scripts/preflight_multileg.py --quantity 1 --limit-price 5.00 \
+  --leg AAPL251219C00200000:OPTION:BUY:OPEN \
+  --leg AAPL251219P00200000:OPTION:BUY:OPEN
+```
+
+**Workflow:**
+1. Use `get_option_chain.py` and `get_option_expirations.py` to pick strikes/expirations.
+2. Execute `preflight_multileg.py` to see estimated cost, margin requirement, and buying-power impact.
+3. If user proceeds, run `place_multileg.py` with the same legs.
+
+### Place Multi-Leg
+When the user is ready to place a non-vertical multi-leg options strategy:
+
+Same arguments as Preflight Multi-Leg above. Only LIMIT orders are accepted by the API for multi-leg orders.
+
+**Example:**
+```bash
+python3 scripts/place_multileg.py --quantity 1 --limit-price -1.50 \
+  --leg AAPL251219P00190000:OPTION:SELL:OPEN \
+  --leg AAPL251219P00185000:OPTION:BUY:OPEN \
+  --leg AAPL251219C00210000:OPTION:SELL:OPEN \
+  --leg AAPL251219C00215000:OPTION:BUY:OPEN
+```
+
+**Workflow:**
+1. Always run `preflight_multileg.py` first with the same legs.
+2. Confirm with the user.
+3. Execute `place_multileg.py`. Report the order ID.
+4. Optionally call `wait_for_fill.py --order-id <id>` to monitor through to terminal status.
+
+### Flatten And Go Short
+When the user wants to "reverse my position", "flip to short", "flatten my long and short it", or asks to close a long equity position and immediately open a short:
+
+**Required parameters:**
+- `--symbol`: Equity symbol
+- `--short-quantity`: Number of shares to short after flattening
+
+**Optional parameters:**
+- `--order-type`: Short order type — MARKET (default), LIMIT, STOP, STOP_LIMIT
+- `--limit-price` / `--stop-price`: Required for non-MARKET types
+- `--time-in-force`: DAY (default) or GTD (requires `--expiration-time`)
+- `--session`: CORE or EXTENDED
+- `--flatten-timeout`: Seconds to wait for the flatten leg to fill (default 60)
+
+**Important:** This is **experimental** in the SDK and **not atomic** — it's a two-order workflow (flatten the long, then short). Market conditions can move between the two fills.
+
+**Example:**
+```bash
+python3 scripts/flatten_and_short.py --symbol TSLA --short-quantity 10
+```
+
+**Workflow:**
+1. Warn the user about the non-atomic nature and the unlimited theoretical risk of shorting.
+2. Execute the script. It reports both the flatten order (if any) and the short order.
+3. The script can be skipped if the user is already flat or short — in that case it just submits the short directly.
+
+### Watch Prices (Real-time)
+When the user asks to "watch the price", "monitor a stock", "alert me when X moves", or wants a real-time stream of quote changes:
+
+**Required parameters:**
+- One or more instruments: `SYMBOL` or `SYMBOL:TYPE` (TYPE = EQUITY | OPTION | CRYPTO, defaults to EQUITY)
+
+**Optional parameters:**
+- `--poll-seconds`: SDK polling interval (0.1-60, default 2.0)
+- `--max-updates`: Stop after N price changes (useful when the agent only needs a snapshot, not an open stream)
+
+**Examples:**
+
+Watch a single equity:
+```bash
+python3 scripts/watch_prices.py AAPL
+```
+
+Watch a basket with a 5-second poll:
+```bash
+python3 scripts/watch_prices.py AAPL GOOGL MSFT --poll-seconds 5
+```
+
+Capture 10 price changes on BTC, then exit:
+```bash
+python3 scripts/watch_prices.py BTC:CRYPTO --max-updates 10
+```
+
+**Workflow:**
+1. Stream prints one line per detected price change (timestamp, symbol, old→new last, bid, ask, changed fields).
+2. For automation-style use (set an alert and walk away), pair this with `--max-updates` plus an outer loop or with the `/schedule` skill — do not leave a long-lived stream running by default.
+3. For trade triggers, the agent should read each line and decide whether to call `place_order.py`.
