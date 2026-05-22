@@ -1,18 +1,15 @@
 import argparse
-import os
 import subprocess
 import sys
 
-from config import get_api_secret, get_account_id
+from config import get_api_secret, get_account_id, create_client
 
 try:
-    from public_api_sdk import PublicApiClient, PublicApiClientConfiguration
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
+    from public_api_sdk import HistoryRequest
 except ImportError:
     print("Installing required dependency: publicdotcom-py...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.8"])
-    from public_api_sdk import PublicApiClient, PublicApiClientConfiguration
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.15"])
+    from public_api_sdk import HistoryRequest
 
 
 def get_history(account_id=None, transaction_type=None, limit=None):
@@ -28,21 +25,30 @@ def get_history(account_id=None, transaction_type=None, limit=None):
         sys.exit(1)
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration(default_account_number=account_id),
-        )
+        client = create_client(secret, account_id)
 
-        history = client.get_history()
-        transactions = history.transactions
+        # Page through results following next_token. Stop once we have `limit`
+        # filtered transactions or there are no more pages.
+        transactions = []
+        next_token = None
+        # Safety cap so we don't loop forever on a bad continuation token.
+        max_pages = 100
+        for _ in range(max_pages):
+            request = HistoryRequest(next_token=next_token) if next_token else None
+            page = client.get_history(history_request=request)
 
-        # Filter by transaction type if specified
-        if transaction_type:
-            transactions = [t for t in transactions if t.type.value == transaction_type]
+            page_txs = page.transactions
+            if transaction_type:
+                page_txs = [t for t in page_txs if t.type.value == transaction_type]
+            transactions.extend(page_txs)
 
-        # Apply limit if specified
-        if limit:
-            transactions = transactions[:limit]
+            if limit and len(transactions) >= limit:
+                transactions = transactions[:limit]
+                break
+
+            next_token = page.next_token
+            if not next_token:
+                break
 
         if not transactions:
             print("No transactions found.")

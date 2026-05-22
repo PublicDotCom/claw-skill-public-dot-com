@@ -3,30 +3,24 @@ import os
 import subprocess
 import sys
 
-from config import get_api_secret, get_account_id
+from config import get_api_secret, get_account_id, create_client
 
 try:
     from public_api_sdk import (
-        PublicApiClient,
-        PublicApiClientConfiguration,
         OrderInstrument,
         InstrumentType,
         OptionChainRequest,
         OptionExpirationsRequest,
     )
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
 except ImportError:
     print("Installing required dependency: publicdotcom-py...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.8"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.15"])
     from public_api_sdk import (
-        PublicApiClient,
-        PublicApiClientConfiguration,
         OrderInstrument,
         InstrumentType,
         OptionChainRequest,
         OptionExpirationsRequest,
     )
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
 
 
 def get_option_expirations(client, symbol):
@@ -52,10 +46,7 @@ def list_expirations(symbol, account_id=None):
         sys.exit(1)
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration(default_account_number=account_id)
-        )
+        client = create_client(secret, account_id)
 
         expirations = get_option_expirations(client, symbol)
 
@@ -143,10 +134,7 @@ def get_option_chain(symbol, expiration_date=None, account_id=None):
         sys.exit(1)
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration(default_account_number=account_id)
-        )
+        client = create_client(secret, account_id)
 
         # If no expiration date provided, get the first available one
         if not expiration_date:

@@ -1,17 +1,6 @@
-import os
-import subprocess
 import sys
 
-try:
-    from public_api_sdk import PublicApiClient, PublicApiClientConfiguration
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
-except ImportError:
-    print("Installing required dependency: publicdotcom-py...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.8"])
-    from public_api_sdk import PublicApiClient, PublicApiClientConfiguration
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
-
-from config import get_api_secret
+from config import get_api_secret, create_client
 
 
 def get_accounts():
@@ -22,10 +11,7 @@ def get_accounts():
         sys.exit(1)
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration()
-        )
+        client = create_client(secret)
 
         accounts_response = client.get_accounts()
 

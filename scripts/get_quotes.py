@@ -3,26 +3,20 @@ import os
 import subprocess
 import sys
 
-from config import get_api_secret, get_account_id
+from config import get_api_secret, get_account_id, create_client
 
 try:
     from public_api_sdk import (
-        PublicApiClient,
-        PublicApiClientConfiguration,
         OrderInstrument,
         InstrumentType,
     )
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
 except ImportError:
     print("Installing required dependency: publicdotcom-py...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.8"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "publicdotcom-py==0.1.15"])
     from public_api_sdk import (
-        PublicApiClient,
-        PublicApiClientConfiguration,
         OrderInstrument,
         InstrumentType,
     )
-    from public_api_sdk.auth_config import ApiKeyAuthConfig
 
 
 def get_quotes(symbols, account_id=None):
@@ -51,12 +45,7 @@ def get_quotes(symbols, account_id=None):
     }
 
     try:
-        client = PublicApiClient(
-            ApiKeyAuthConfig(api_secret_key=secret),
-            config=PublicApiClientConfiguration(
-                default_account_number=account_id
-            )
-        )
+        client = create_client(secret, account_id)
 
         # Build list of instruments
         instruments = []
