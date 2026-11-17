@@ -36,9 +36,17 @@ This skill uses two environment variables: `PUBLIC_COM_SECRET` (required) and `P
 - **Environment variable** — `PUBLIC_COM_SECRET` / `PUBLIC_COM_ACCOUNT_ID`
 
 ### API Secret (Required)
+The API secret carries the full authority of the user's brokerage account, including trading. It must be configured outside the conversation and must never pass through it.
+
+- **Never ask the user for the API secret, and never accept, repeat, store, or log it.** Do not put the value into any command (for example `export PUBLIC_COM_SECRET=...` or `PUBLIC_COM_SECRET=... python3 ...`). The scripts read it from the environment on their own.
+
 If `PUBLIC_COM_SECRET` is not set:
-- Tell the user: "I need your Public.com API Secret. You can find this in your Public.com developer settings at https://public.com/settings/v2/api."
-- Once provided, instruct them to set it as an environment variable: `export PUBLIC_COM_SECRET=[VALUE]`
+- Tell the user: "Your Public.com API secret isn't configured yet. For your security, please don't paste it into this chat. Get your secret at https://public.com/settings/v2/api, then in your own terminal add `export PUBLIC_COM_SECRET=<YOUR_API_SECRET>` to your shell profile (for example `~/.zshrc` or `~/.bashrc`), or load it from your password manager or keychain. Then restart this agent so it picks up the variable."
+- Once the user says they've done this, run `python3 scripts/check_setup.py` to confirm.
+
+If the user pastes their API secret into the conversation anyway:
+- Do not use it, repeat it, or put it into any command.
+- Tell them the secret is now exposed in this conversation's history, and that they should revoke it and generate a new one at https://public.com/settings/v2/api, then set the new secret as described above.
 
 ### Default Account ID (Optional)
 If the user wants to set a default account for all requests:
@@ -49,7 +57,7 @@ If the user wants to set a default account for all requests:
 
 If any command exits with an error, follow these steps before giving up:
 
-- **`PUBLIC_COM_SECRET` not set** — Ask the user for their API secret and instruct them to run `export PUBLIC_COM_SECRET=[VALUE]`, then retry.
+- **`PUBLIC_COM_SECRET` not set** — Do not ask for the secret. Point the user to the setup steps in **API Secret (Required)** above, and retry only after they have set the variable and restarted the agent.
 - **`No account ID provided`** — Run `python3 scripts/get_accounts.py` to retrieve the account ID, then retry the original command with `--account-id [ID]`.
 - **Authentication / 401 error** — Tell the user their API key may be expired or invalid, and direct them to https://public.com/settings/v2/api to generate a new one.
 - **Network / connection error** — Ask the user to check their internet connection and retry.

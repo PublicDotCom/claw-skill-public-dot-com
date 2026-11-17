@@ -42,7 +42,9 @@ Set the environment variable before running your agent:
 export PUBLIC_COM_SECRET=<YOUR_API_SECRET>
 ```
 
-You can find your API secret at https://public.com/settings/v2/api. Alternatively, the skill will prompt you for it on first use (e.g. "How is my Public portfolio doing today?").
+You can find your API secret at https://public.com/settings/v2/api. Add the `export` line to your shell profile (for example `~/.zshrc` or `~/.bashrc`), or load it from your password manager or keychain, so the agent picks it up on start.
+
+> **Never paste your API secret into the agent conversation.** It carries the full authority of your brokerage account, and anything in the chat stays in the session context and conversation logs. If the secret isn't set, the skill points you to these setup steps instead of asking for it. If you ever do paste it into a chat, revoke it and generate a new one.
 
 ### Setting a default account ID
 
